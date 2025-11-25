@@ -215,6 +215,69 @@ if (contactFormEl) {
     });
 }
 
+// Handle contact form submission
+document.addEventListener('DOMContentLoaded', function() {
+    const contactForm = document.querySelector('form[action*="formspree"]');
+    const formStatus = document.getElementById('form-status');
+    
+    if (contactForm && formStatus) {
+        contactForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(contactForm);
+            const submitButton = contactForm.querySelector('button[type="submit"]');
+            const originalButtonText = submitButton.textContent;
+            
+            // Disable button and show loading state
+            submitButton.disabled = true;
+            submitButton.textContent = 'Sending...';
+            
+            try {
+                const response = await fetch(contactForm.action, {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    // Show success message
+                    formStatus.textContent = '✓ Message sent successfully! We\'ll get back to you soon.';
+                    formStatus.className = 'mt-4 p-4 rounded-xl text-center font-semibold bg-green-100 text-green-700';
+                    formStatus.classList.remove('hidden');
+                    
+                    // Reset form
+                    contactForm.reset();
+                    
+                    // Hide message after 5 seconds
+                    setTimeout(() => {
+                        formStatus.classList.add('hidden');
+                    }, 5000);
+                } else {
+                    const data = await response.json();
+                    throw new Error(data.error || 'Form submission failed');
+                }
+            } catch (error) {
+                console.error('Form submission error:', error);
+                // Show error message
+                formStatus.textContent = '✗ Oops! Something went wrong. Please try again or call us at 813-285-4615.';
+                formStatus.className = 'mt-4 p-4 rounded-xl text-center font-semibold bg-red-100 text-red-700';
+                formStatus.classList.remove('hidden');
+                
+                // Hide error message after 7 seconds
+                setTimeout(() => {
+                    formStatus.classList.add('hidden');
+                }, 7000);
+            } finally {
+                // Re-enable button
+                submitButton.disabled = false;
+                submitButton.textContent = originalButtonText;
+            }
+        });
+    }
+});
+
 function showStatus(elementId, message, type) {
     const statusEl = document.getElementById(elementId);
     if (!statusEl) return;
