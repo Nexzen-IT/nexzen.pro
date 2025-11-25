@@ -22,11 +22,11 @@ let currentCustomerCount = baseCustomerCount;
 
 const dataHandler = {
     onDataChanged(data) {
-        allRecords = data;
-        currentRecordCount = data.length;
+        allRecords = data || [];
+        currentRecordCount = allRecords.length;
 
-        const contacts = data.filter(r => r.type === 'contact');
-        const customerRecords = data.filter(r => r.type === 'customer_count');
+        const contacts = allRecords.filter(r => r.type === 'contact');
+        const customerRecords = allRecords.filter(r => r.type === 'customer_count');
 
         // Update customer counter - every visit counts
         const newCount = baseCustomerCount + customerRecords.length;
@@ -52,15 +52,7 @@ async function initCustomerCounter() {
         return;
     }
 
-    // Every visit counts as a new customer - no localStorage check
-    // Create new customer record for every page visit
-    const visitorRecord = {
-        type: 'customer_count',
-        id: Date.now().toString() + '_' + Math.random().toString(36).substr(2, 9),
-        visitedAt: new Date().toISOString()
-    };
-
-    await window.dataSdk.create(visitorRecord);
+    // NOTE: visitor record creation moved to visitor_counter.js to avoid double-posting.
 }
 
 function animateCounter() {
@@ -102,6 +94,7 @@ function animateCounter() {
 
 function updateCounterDisplay() {
     const counterElement = document.getElementById('customer-counter');
+    if (!counterElement) return;
     counterElement.textContent = currentCustomerCount.toLocaleString() + '+';
 }
 
@@ -110,8 +103,9 @@ initCustomerCounter();
 function renderSubmissions(submissions) {
     const container = document.getElementById('submissions-list');
     const emptyState = document.getElementById('submissions-empty');
+    if (!container || !emptyState) return;
 
-    if (submissions.length === 0) {
+    if (!submissions || submissions.length === 0) {
         container.innerHTML = '';
         emptyState.style.display = 'block';
         return;
@@ -124,78 +118,106 @@ function renderSubmissions(submissions) {
       <div class="bg-white p-6 rounded-2xl shadow-lg border border-gray-100 hover-lift">
         <div class="flex justify-between items-start mb-4">
           <div>
-            <div class="font-bold text-xl text-gray-900">${sub.name}</div>
+            <div class="font-bold text-xl text-gray-900">${sub.name || 'No name'}</div>
             <div class="text-sm text-gray-500">${new Date(sub.createdAt).toLocaleString()}</div>
           </div>
-          <button onclick="deleteRecord('${sub.__backendId}')" class="px-4 py-2 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600 transition font-semibold">Delete</button>
+          <button onclick="deleteRecord(event, '${sub.__backendId}')" class="px-4 py-2 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600 transition font-semibold">Delete</button>
         </div>
         <div class="grid md:grid-cols-2 gap-4 text-sm">
-          <div><span class="font-semibold text-gray-700">Email:</span> <span class="text-gray-600">${sub.email}</span></div>
-          <div><span class="font-semibold text-gray-700">Phone:</span> <span class="text-gray-600">${sub.phone}</span></div>
-          <div class="md:col-span-2"><span class="font-semibold text-gray-700">Service:</span> <span class="text-gray-600">${sub.service}</span></div>
-          <div class="md:col-span-2"><span class="font-semibold text-gray-700">Message:</span> <span class="text-gray-600">${sub.message}</span></div>
+          <div><span class="font-semibold text-gray-700">Email:</span> <span class="text-gray-600">${sub.email || '-'}</span></div>
+          <div><span class="font-semibold text-gray-700">Phone:</span> <span class="text-gray-600">${sub.phone || '-'}</span></div>
+          <div class="md:col-span-2"><span class="font-semibold text-gray-700">Service:</span> <span class="text-gray-600">${sub.service || '-'}</span></div>
+          <div class="md:col-span-2"><span class="font-semibold text-gray-700">Message:</span> <span class="text-gray-600">${sub.message || '-'}</span></div>
         </div>
       </div>
     `).join('');
 }
 
-async function deleteRecord(backendId) {
+async function deleteRecord(evt, backendId) {
+    evt = evt || window.event;
     const record = allRecords.find(r => r.__backendId === backendId);
     if (!record) return;
 
-    const btn = event.target;
-    const originalText = btn.textContent;
-    btn.textContent = 'Deleting...';
-    btn.disabled = true;
+    const btn = (evt && (evt.currentTarget || evt.target)) || null;
+    const originalText = btn ? btn.textContent : 'Delete';
+    if (btn) {
+        btn.textContent = 'Deleting...';
+        btn.disabled = true;
+    }
 
-    const result = await window.dataSdk.delete(record);
+    try {
+        const result = await window.dataSdk.delete(record);
 
-    if (!result.isOk) {
-        btn.textContent = originalText;
-        btn.disabled = false;
+        if (!result || !result.isOk) {
+            if (btn) {
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }
+            showStatus('form-status', 'Failed to delete record', 'error');
+            return;
+        }
+
+        // remove record locally and re-render
+        allRecords = allRecords.filter(r => r.__backendId !== backendId);
+        dataHandler.onDataChanged(allRecords);
+        showStatus('form-status', 'Record deleted', 'success');
+    } catch (err) {
+        if (btn) {
+            btn.textContent = originalText;
+            btn.disabled = false;
+        }
         showStatus('form-status', 'Failed to delete record', 'error');
     }
 }
 
-document.getElementById('contact-form').addEventListener('submit', async function (e) {
-    e.preventDefault();
+// Safe event listener attachments
+const contactFormEl = document.getElementById('contact-form');
+if (contactFormEl) {
+    contactFormEl.addEventListener('submit', async function (e) {
+        e.preventDefault();
 
-    if (currentRecordCount >= 999) {
-        showStatus('form-status', 'Maximum limit reached. Please contact administrator.', 'error');
-        return;
-    }
+        if (currentRecordCount >= 999) {
+            showStatus('form-status', 'Maximum limit reached. Please contact administrator.', 'error');
+            return;
+        }
 
-    const submitBtn = document.getElementById('submit-btn');
-    const originalText = submitBtn.textContent;
-    submitBtn.textContent = 'Sending...';
-    submitBtn.disabled = true;
+        const submitBtn = document.getElementById('submit-btn');
+        const originalText = submitBtn ? submitBtn.textContent : 'Sending...';
+        if (submitBtn) {
+            submitBtn.textContent = 'Sending...';
+            submitBtn.disabled = true;
+        }
 
-    const formData = {
-        type: 'contact',
-        id: Date.now().toString(),
-        name: document.getElementById('form-name').value,
-        email: document.getElementById('form-email').value,
-        phone: document.getElementById('form-phone').value,
-        service: document.getElementById('form-service').value,
-        message: document.getElementById('form-message').value,
-        createdAt: new Date().toISOString()
-    };
+        const formData = {
+            type: 'contact',
+            id: Date.now().toString(),
+            name: (document.getElementById('form-name') && document.getElementById('form-name').value) || '',
+            email: (document.getElementById('form-email') && document.getElementById('form-email').value) || '',
+            phone: (document.getElementById('form-phone') && document.getElementById('form-phone').value) || '',
+            service: (document.getElementById('form-service') && document.getElementById('form-service').value) || '',
+            message: (document.getElementById('form-message') && document.getElementById('form-message').value) || '',
+            createdAt: new Date().toISOString()
+        };
 
-    const result = await window.dataSdk.create(formData);
+        const result = await window.dataSdk.create(formData);
 
-    submitBtn.disabled = false;
-    submitBtn.textContent = originalText;
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = originalText;
+        }
 
-    if (result.isOk) {
-        showStatus('form-status', 'Message sent! We\'ll respond within 24 hours.', 'success');
-        document.getElementById('contact-form').reset();
-    } else {
-        showStatus('form-status', 'Failed to send message. Please try again.', 'error');
-    }
-});
+        if (result && result.isOk) {
+            showStatus('form-status', 'Message sent! We\'ll respond within 24 hours.', 'success');
+            document.getElementById('contact-form').reset();
+        } else {
+            showStatus('form-status', 'Failed to send message. Please try again.', 'error');
+        }
+    });
+}
 
 function showStatus(elementId, message, type) {
     const statusEl = document.getElementById(elementId);
+    if (!statusEl) return;
     statusEl.textContent = message;
     statusEl.className = `text-center font-semibold ${type === 'success' ? 'text-green-600' : 'text-red-600'}`;
     setTimeout(() => {
@@ -203,139 +225,166 @@ function showStatus(elementId, message, type) {
     }, 5000);
 }
 
-document.getElementById('check-zip-btn').addEventListener('click', function (e) {
-    e.preventDefault();
-    const zip = document.getElementById('zip-input').value.trim();
-    const resultEl = document.getElementById('zip-result');
+const checkZipBtn = document.getElementById('check-zip-btn');
+if (checkZipBtn) {
+    checkZipBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        const zip = document.getElementById('zip-input') ? document.getElementById('zip-input').value.trim() : '';
+        const resultEl = document.getElementById('zip-result');
+        if (!resultEl) return;
 
-    if (zip.length !== 5 || isNaN(zip)) {
-        resultEl.innerHTML = '<div class="p-4 bg-red-50 border-l-4 border-red-500 text-red-700 rounded-lg"><strong>Invalid ZIP code.</strong> Please enter a valid 5-digit ZIP code.</div>';
-        return;
-    }
+        if (zip.length !== 5 || isNaN(zip)) {
+            resultEl.innerHTML = '<div class="p-4 bg-red-50 border-l-4 border-red-500 text-red-700 rounded-lg"><strong>Invalid ZIP code.</strong> Please enter a valid 5-digit ZIP code.</div>';
+            return;
+        }
 
-    const zipNum = parseInt(zip);
-    // Florida ZIP codes: 32000-34999 and 33000-33999
-    const inRange = (zipNum >= 32000 && zipNum <= 34999);
+        const zipNum = parseInt(zip);
+        const inRange = (zipNum >= 32000 && zipNum <= 34999);
 
-    if (inRange) {
-        resultEl.innerHTML = '<div class="p-4 bg-green-50 border-l-4 border-green-500 text-green-700 rounded-lg"><strong>✓ Great news!</strong> We serve your area. Contact us to get started today.</div>';
-    } else {
-        resultEl.innerHTML = '<div class="p-4 bg-gray-50 border-l-4 border-gray-400 text-gray-700 rounded-lg">This ZIP code may be outside our current service area. Contact us to confirm availability.</div>';
-    }
-});
+        if (inRange) {
+            resultEl.innerHTML = '<div class="p-4 bg-green-50 border-l-4 border-green-500 text-green-700 rounded-lg"><strong>✓ Great news!</strong> We serve your area. Contact us to get started today.</div>';
+        } else {
+            resultEl.innerHTML = '<div class="p-4 bg-gray-50 border-l-4 border-gray-400 text-gray-700 rounded-lg">This ZIP code may be outside our current service area. Contact us to confirm availability.</div>';
+        }
+    });
+}
 
-document.getElementById('mobile-menu-btn').addEventListener('click', function () {
-    document.getElementById('mobile-menu').classList.toggle('hidden');
-});
+const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+if (mobileMenuBtn) {
+    mobileMenuBtn.addEventListener('click', function () {
+        const mobileMenu = document.getElementById('mobile-menu');
+        if (mobileMenu) mobileMenu.classList.toggle('hidden');
+    });
+}
 
-document.getElementById('login-nav-btn').addEventListener('click', function () {
-    openLoginModal();
-});
+const loginNavBtn = document.getElementById('login-nav-btn');
+if (loginNavBtn) loginNavBtn.addEventListener('click', openLoginModal);
 
-document.getElementById('login-mobile-btn').addEventListener('click', function () {
-    document.getElementById('mobile-menu').classList.add('hidden');
+const loginMobileBtn = document.getElementById('login-mobile-btn');
+if (loginMobileBtn) loginMobileBtn.addEventListener('click', function () {
+    const mobileMenu = document.getElementById('mobile-menu');
+    if (mobileMenu) mobileMenu.classList.add('hidden');
     openLoginModal();
 });
 
 function openLoginModal() {
-    document.getElementById('login-modal').classList.remove('hidden');
+    const modal = document.getElementById('login-modal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
     showLoginForm();
 }
 
 function closeLoginModal() {
-    document.getElementById('login-modal').classList.add('hidden');
+    const modal = document.getElementById('login-modal');
+    if (!modal) return;
+    modal.classList.add('hidden');
 }
 
 function showLoginForm() {
-    document.getElementById('login-form-container').classList.remove('hidden');
-    document.getElementById('signup-form-container').classList.add('hidden');
+    const loginContainer = document.getElementById('login-form-container');
+    const signupContainer = document.getElementById('signup-form-container');
+    if (loginContainer) loginContainer.classList.remove('hidden');
+    if (signupContainer) signupContainer.classList.add('hidden');
 }
 
 function showSignupForm() {
-    document.getElementById('login-form-container').classList.add('hidden');
-    document.getElementById('signup-form-container').classList.remove('hidden');
+    const loginContainer = document.getElementById('login-form-container');
+    const signupContainer = document.getElementById('signup-form-container');
+    if (loginContainer) loginContainer.classList.add('hidden');
+    if (signupContainer) signupContainer.classList.remove('hidden');
 }
 
-document.getElementById('login-form').addEventListener('submit', async function (e) {
-    e.preventDefault();
+const loginFormEl = document.getElementById('login-form');
+if (loginFormEl) {
+    loginFormEl.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const email = document.getElementById('login-email') ? document.getElementById('login-email').value : '';
+        const password = document.getElementById('login-password') ? document.getElementById('login-password').value : '';
+        const btn = document.getElementById('login-submit-btn');
+        const originalText = btn ? btn.textContent : 'Logging in...';
 
-    const email = document.getElementById('login-email').value;
-    const password = document.getElementById('login-password').value;
-    const btn = document.getElementById('login-submit-btn');
-    const originalText = btn.textContent;
+        if (btn) {
+            btn.textContent = 'Logging in...';
+            btn.disabled = true;
+        }
 
-    btn.textContent = 'Logging in...';
-    btn.disabled = true;
+        await new Promise(resolve => setTimeout(resolve, 1000));
 
-    await new Promise(resolve => setTimeout(resolve, 1000));
+        const user = allRecords.find(r => r.type === 'user' && r.email === email && r.password === password);
 
-    // Find user in database
-    const user = allRecords.find(r => r.type === 'user' && r.email === email && r.password === password);
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = originalText;
+        }
 
-    btn.disabled = false;
-    btn.textContent = originalText;
+        if (user) {
+            showStatus('login-status', 'Login successful! Welcome back, ' + (user.firstName || '') + '!', 'success');
+            setTimeout(() => {
+                closeLoginModal();
+                if (loginFormEl) loginFormEl.reset();
+            }, 1500);
+        } else {
+            showStatus('login-status', 'Invalid email or password. Please try again.', 'error');
+        }
+    });
+}
 
-    if (user) {
-        showStatus('login-status', 'Login successful! Welcome back, ' + user.firstName + '!', 'success');
-        setTimeout(() => {
-            closeLoginModal();
-            document.getElementById('login-form').reset();
-        }, 1500);
-    } else {
-        showStatus('login-status', 'Invalid email or password. Please try again.', 'error');
-    }
-});
+const signupFormEl = document.getElementById('signup-form');
+if (signupFormEl) {
+    signupFormEl.addEventListener('submit', async function (e) {
+        e.preventDefault();
 
-document.getElementById('signup-form').addEventListener('submit', async function (e) {
-    e.preventDefault();
+        if (currentRecordCount >= 999) {
+            showStatus('signup-status', 'Maximum accounts reached. Please contact us.', 'error');
+            return;
+        }
 
-    if (currentRecordCount >= 999) {
-        showStatus('signup-status', 'Maximum accounts reached. Please contact us.', 'error');
-        return;
-    }
+        const email = document.getElementById('signup-email') ? document.getElementById('signup-email').value : '';
 
-    const email = document.getElementById('signup-email').value;
+        const existingUser = allRecords.find(r => r.type === 'user' && r.email === email);
+        if (existingUser) {
+            showStatus('signup-status', 'This email is already registered. Please login instead.', 'error');
+            return;
+        }
 
-    // Check if email already exists
-    const existingUser = allRecords.find(r => r.type === 'user' && r.email === email);
-    if (existingUser) {
-        showStatus('signup-status', 'This email is already registered. Please login instead.', 'error');
-        return;
-    }
+        const btn = document.getElementById('signup-submit-btn');
+        const originalText = btn ? btn.textContent : 'Creating account...';
 
-    const btn = document.getElementById('signup-submit-btn');
-    const originalText = btn.textContent;
+        if (btn) {
+            btn.textContent = 'Creating account...';
+            btn.disabled = true;
+        }
 
-    btn.textContent = 'Creating account...';
-    btn.disabled = true;
+        const userData = {
+            type: 'user',
+            id: Date.now().toString(),
+            firstName: document.getElementById('signup-firstname') ? document.getElementById('signup-firstname').value : '',
+            lastName: document.getElementById('signup-lastname') ? document.getElementById('signup-lastname').value : '',
+            email: email,
+            phone: document.getElementById('signup-phone') ? document.getElementById('signup-phone').value : '',
+            propertyAddress: document.getElementById('signup-address') ? document.getElementById('signup-address').value : '',
+            password: document.getElementById('signup-password') ? document.getElementById('signup-password').value : '',
+            createdAt: new Date().toISOString()
+        };
 
-    const userData = {
-        type: 'user',
-        id: Date.now().toString(),
-        firstName: document.getElementById('signup-firstname').value,
-        lastName: document.getElementById('signup-lastname').value,
-        email: email,
-        phone: document.getElementById('signup-phone').value,
-        propertyAddress: document.getElementById('signup-address').value,
-        password: document.getElementById('signup-password').value,
-        createdAt: new Date().toISOString()
-    };
+        const result = await window.dataSdk.create(userData);
 
-    const result = await window.dataSdk.create(userData);
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = originalText;
+        }
 
-    btn.disabled = false;
-    btn.textContent = originalText;
-
-    if (result.isOk) {
-        showStatus('signup-status', 'Account created successfully! You can now login.', 'success');
-        document.getElementById('signup-form').reset();
-        setTimeout(() => {
-            showLoginForm();
-        }, 2000);
-    } else {
-        showStatus('signup-status', 'Failed to create account. Please try again.', 'error');
-    }
-});
+        if (result && result.isOk) {
+            showStatus('signup-status', 'Account created successfully! You can now login.', 'success');
+            signupFormEl.reset();
+            setTimeout(() => {
+                showLoginForm();
+            }, 2000);
+        } else {
+            showStatus('signup-status', 'Failed to create account. Please try again.', 'error');
+        }
+    });
+}
 
 function showToast(message) {
     const toast = document.createElement('div');
