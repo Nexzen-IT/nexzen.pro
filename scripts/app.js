@@ -257,6 +257,7 @@ if (mobileMenuBtn) {
     });
 }
 
+// Portal modal controls
 const loginNavBtn = document.getElementById('login-nav-btn');
 if (loginNavBtn) loginNavBtn.addEventListener('click', openLoginModal);
 
@@ -271,7 +272,7 @@ function openLoginModal() {
     const modal = document.getElementById('login-modal');
     if (!modal) return;
     modal.classList.remove('hidden');
-    showLoginForm();
+    showClientLogin(); // default to client tab
 }
 
 function closeLoginModal() {
@@ -280,28 +281,49 @@ function closeLoginModal() {
     modal.classList.add('hidden');
 }
 
-function showLoginForm() {
-    const loginContainer = document.getElementById('login-form-container');
-    const signupContainer = document.getElementById('signup-form-container');
-    if (loginContainer) loginContainer.classList.remove('hidden');
-    if (signupContainer) signupContainer.classList.add('hidden');
+function showClientLogin() {
+    document.getElementById('client-login-container')?.classList.remove('hidden');
+    document.getElementById('technician-login-container')?.classList.add('hidden');
+    document.getElementById('client-signup-container')?.classList.add('hidden');
+    document.getElementById('technician-signup-container')?.classList.add('hidden');
+    
+    document.getElementById('client-tab')?.classList.add('text-sky-600', 'border-sky-600');
+    document.getElementById('client-tab')?.classList.remove('text-gray-400');
+    document.getElementById('technician-tab')?.classList.remove('text-sky-600', 'border-sky-600');
+    document.getElementById('technician-tab')?.classList.add('text-gray-400');
 }
 
-function showSignupForm() {
-    const loginContainer = document.getElementById('login-form-container');
-    const signupContainer = document.getElementById('signup-form-container');
-    if (loginContainer) loginContainer.classList.add('hidden');
-    if (signupContainer) signupContainer.classList.remove('hidden');
+function showTechnicianLogin() {
+    document.getElementById('client-login-container')?.classList.add('hidden');
+    document.getElementById('technician-login-container')?.classList.remove('hidden');
+    document.getElementById('client-signup-container')?.classList.add('hidden');
+    document.getElementById('technician-signup-container')?.classList.add('hidden');
+    
+    document.getElementById('technician-tab')?.classList.add('text-sky-600', 'border-sky-600');
+    document.getElementById('technician-tab')?.classList.remove('text-gray-400');
+    document.getElementById('client-tab')?.classList.remove('text-sky-600', 'border-sky-600');
+    document.getElementById('client-tab')?.classList.add('text-gray-400');
 }
 
-const loginFormEl = document.getElementById('login-form');
-if (loginFormEl) {
-    loginFormEl.addEventListener('submit', async function (e) {
+function showClientSignup() {
+    document.getElementById('client-login-container')?.classList.add('hidden');
+    document.getElementById('client-signup-container')?.classList.remove('hidden');
+}
+
+function showTechnicianSignup() {
+    document.getElementById('technician-login-container')?.classList.add('hidden');
+    document.getElementById('technician-signup-container')?.classList.remove('hidden');
+}
+
+// Client login handler
+const clientLoginForm = document.getElementById('client-login-form');
+if (clientLoginForm) {
+    clientLoginForm.addEventListener('submit', async function (e) {
         e.preventDefault();
-        const email = document.getElementById('login-email') ? document.getElementById('login-email').value : '';
-        const password = document.getElementById('login-password') ? document.getElementById('login-password').value : '';
-        const btn = document.getElementById('login-submit-btn');
-        const originalText = btn ? btn.textContent : 'Logging in...';
+        const email = document.getElementById('client-email')?.value || '';
+        const password = document.getElementById('client-password')?.value || '';
+        const btn = document.getElementById('client-submit-btn');
+        const originalText = btn?.textContent || 'Logging in...';
 
         if (btn) {
             btn.textContent = 'Logging in...';
@@ -310,7 +332,7 @@ if (loginFormEl) {
 
         await new Promise(resolve => setTimeout(resolve, 1000));
 
-        const user = allRecords.find(r => r.type === 'user' && r.email === email && r.password === password);
+        const user = allRecords.find(r => r.type === 'client' && r.email === email && r.password === password);
 
         if (btn) {
             btn.disabled = false;
@@ -318,52 +340,88 @@ if (loginFormEl) {
         }
 
         if (user) {
-            showStatus('login-status', 'Login successful! Welcome back, ' + (user.firstName || '') + '!', 'success');
+            showStatus('client-status', 'Login successful! Welcome back, ' + (user.firstName || '') + '!', 'success');
             setTimeout(() => {
                 closeLoginModal();
-                if (loginFormEl) loginFormEl.reset();
+                clientLoginForm.reset();
             }, 1500);
         } else {
-            showStatus('login-status', 'Invalid email or password. Please try again.', 'error');
+            showStatus('client-status', 'Invalid email or password.', 'error');
         }
     });
 }
 
-const signupFormEl = document.getElementById('signup-form');
-if (signupFormEl) {
-    signupFormEl.addEventListener('submit', async function (e) {
+// Technician login handler
+const technicianLoginForm = document.getElementById('technician-login-form');
+if (technicianLoginForm) {
+    technicianLoginForm.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const email = document.getElementById('technician-email')?.value || '';
+        const password = document.getElementById('technician-password')?.value || '';
+        const btn = document.getElementById('technician-submit-btn');
+        const originalText = btn?.textContent || 'Logging in...';
+
+        if (btn) {
+            btn.textContent = 'Logging in...';
+            btn.disabled = true;
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        const technician = allRecords.find(r => r.type === 'technician' && r.email === email && r.password === password);
+
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = originalText;
+        }
+
+        if (technician) {
+            showStatus('technician-status', 'Login successful! Welcome, ' + (technician.company || '') + '!', 'success');
+            setTimeout(() => {
+                closeLoginModal();
+                technicianLoginForm.reset();
+            }, 1500);
+        } else {
+            showStatus('technician-status', 'Invalid technician credentials.', 'error');
+        }
+    });
+}
+
+// Client signup handler
+const clientSignupForm = document.getElementById('client-signup-form');
+if (clientSignupForm) {
+    clientSignupForm.addEventListener('submit', async function (e) {
         e.preventDefault();
 
         if (currentRecordCount >= 999) {
-            showStatus('signup-status', 'Maximum accounts reached. Please contact us.', 'error');
+            showStatus('signup-status', 'Maximum accounts reached.', 'error');
             return;
         }
 
-        const email = document.getElementById('signup-email') ? document.getElementById('signup-email').value : '';
-
-        const existingUser = allRecords.find(r => r.type === 'user' && r.email === email);
-        if (existingUser) {
-            showStatus('signup-status', 'This email is already registered. Please login instead.', 'error');
+        const email = document.getElementById('signup-email')?.value || '';
+        const existing = allRecords.find(r => r.type === 'client' && r.email === email);
+        if (existing) {
+            showStatus('signup-status', 'Email already registered.', 'error');
             return;
         }
 
         const btn = document.getElementById('signup-submit-btn');
-        const originalText = btn ? btn.textContent : 'Creating account...';
+        const originalText = btn?.textContent || 'Creating...';
 
         if (btn) {
-            btn.textContent = 'Creating account...';
+            btn.textContent = 'Creating...';
             btn.disabled = true;
         }
 
         const userData = {
-            type: 'user',
+            type: 'client',
             id: Date.now().toString(),
-            firstName: document.getElementById('signup-firstname') ? document.getElementById('signup-firstname').value : '',
-            lastName: document.getElementById('signup-lastname') ? document.getElementById('signup-lastname').value : '',
+            firstName: document.getElementById('signup-firstname')?.value || '',
+            lastName: document.getElementById('signup-lastname')?.value || '',
             email: email,
-            phone: document.getElementById('signup-phone') ? document.getElementById('signup-phone').value : '',
-            propertyAddress: document.getElementById('signup-address') ? document.getElementById('signup-address').value : '',
-            password: document.getElementById('signup-password') ? document.getElementById('signup-password').value : '',
+            phone: document.getElementById('signup-phone')?.value || '',
+            propertyAddress: document.getElementById('signup-address')?.value || '',
+            password: document.getElementById('signup-password')?.value || '',
             createdAt: new Date().toISOString()
         };
 
@@ -375,13 +433,53 @@ if (signupFormEl) {
         }
 
         if (result && result.isOk) {
-            showStatus('signup-status', 'Account created successfully! You can now login.', 'success');
-            signupFormEl.reset();
-            setTimeout(() => {
-                showLoginForm();
-            }, 2000);
+            showStatus('signup-status', 'Account created! You can now login.', 'success');
+            clientSignupForm.reset();
+            setTimeout(() => showClientLogin(), 2000);
         } else {
-            showStatus('signup-status', 'Failed to create account. Please try again.', 'error');
+            showStatus('signup-status', 'Failed to create account.', 'error');
+        }
+    });
+}
+
+// Technician signup handler
+const technicianSignupForm = document.getElementById('technician-signup-form');
+if (technicianSignupForm) {
+    technicianSignupForm.addEventListener('submit', async function (e) {
+        e.preventDefault();
+
+        const btn = document.getElementById('technician-signup-btn');
+        const originalText = btn?.textContent || 'Submitting...';
+
+        if (btn) {
+            btn.textContent = 'Submitting...';
+            btn.disabled = true;
+        }
+
+        const technicianData = {
+            type: 'technician',
+            id: Date.now().toString(),
+            company: document.getElementById('technician-company')?.value || '',
+            email: document.getElementById('technician-signup-email')?.value || '',
+            phone: document.getElementById('technician-phone')?.value || '',
+            services: document.getElementById('technician-services')?.value || '',
+            status: 'pending',
+            createdAt: new Date().toISOString()
+        };
+
+        const result = await window.dataSdk.create(technicianData);
+
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = originalText;
+        }
+
+        if (result && result.isOk) {
+            showStatus('technician-signup-status', 'Request submitted! We\'ll review and contact you.', 'success');
+            technicianSignupForm.reset();
+            setTimeout(() => showTechnicianLogin(), 2500);
+        } else {
+            showStatus('technician-signup-status', 'Failed to submit request.', 'error');
         }
     });
 }
