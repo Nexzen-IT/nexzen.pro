@@ -1,5 +1,8 @@
 {
   "functions": {
-    "api/**/*.js": { "runtime": "nodejs18.x", "maxDuration": 10 }
+    "api/**/*.js": {
+      "runtime": "nodejs@24.x",
+      "maxDuration": 10
+    }
   }
 }
